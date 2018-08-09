@@ -16,7 +16,7 @@ Import the rules.json file to Pulse. The import button is located in the bottom 
 
 Create constants as shown in the image below with your information:
 
-![](/images/pulseconstants.png)
+![](/jenkinsPulseAutomation/images/pulseconstants.png)
 
 **qTestAPIToken** Your qTest API Token
 
@@ -39,16 +39,16 @@ Create constants as shown in the image below with your information:
 
 To post testcases and testruns to qTest, the automation test-logs API requires a ProjectId and Test-Cycle Id. Navigate to the project, in which you would like the results to be updated. Aquire the Project Id which can be found in the URL directly after the baseURL. 
 
-![](/images/qtestprojectid.png)
+![](/jenkinsPulseAutomation/images/qtestprojectid.png)
 
 
 Next, click on the Test Execution tab and add a new test cycle, which is the button located in the top right in the image below.
 
-![](/images/testcycleqtest.png)
+![](/jenkinsPulseAutomation/images/testcycleqtest.png)
 
 Aquire the Test-Cycle Id, which is the last string of numbers in the URL directly following "id=". 
 
-![](/images/qtesttestcycleid.png)
+![](/jenkinsPulseAutomation/images/qtesttestcycleid.png)
 
 Save the Project Id and Test-Cycle Id, which will be used in an execution script in Jenkins.
 

@@ -14,7 +14,7 @@ Import the rules.json file to Pulse. The import button is located in the bottom 
 
 Create constants as shown in the image below with your information:
 
-![](/images/pulseconstants.png)
+![](/bambooAutomation/images/pulseconstants.png)
 
 **BambooURL** The base Bamboo Url
 
@@ -33,24 +33,24 @@ Create constants as shown in the image below with your information:
 
 Navigate to the repository where the project will be located. Go to settings and click on the Webhooks tab. Add a Webhook and in the section for a Payload URL place the Pulse URL for the "triggerBamboo" Event in Pulse. To find the Pulse URL click on the Edit Event Button (Pencil Icon) next to the triggerBamboo Event. Finally, save the Webhook.
 
-![](/images/pulseurl.png)
+![](/bambooAutomation/images/pulseurl.png)
 
-![](/images/githubwebhook.png)
+![](/bambooAutomation/images/githubwebhook.png)
 
 ## Set up qTest Manager:
 
 To post testcases and testruns to qTest, the automation test-logs API requires a ProjectId and Test-Cycle Id. Navigate to the project, in which you would like the results to be updated. Aquire the Project Id which can be found in the URL directly after the baseURL. 
 
-![](/images/qtestprojectid.png)
+![](/bambooAutomation/images/qtestprojectid.png)
 
 
 Next, click on the Test Execution tab and add a new test cycle, which is the button located in the top right in the image below.
 
-![](/images/testcycleqtest.png)
+![](/bambooAutomation/images/testcycleqtest.png)
 
 Aquire the Test-Cycle Id, which is the last string of numbers in the URL directly following "id=". 
 
-![](/images/qtesttestcycleid.png)
+![](/bambooAutomation/images/qtesttestcycleid.png)
 
 Save the Project Id and Test-Cycle Id, which will be used in an execution script in Bamboo.
 
@@ -67,7 +67,7 @@ For this example we will be pulling a TestNg Sample Test from QASymphony GitHub&
 
 1) Choose the "Source Code Checkout" task and link the testng-sample repository in the Source Code Coniguration Tab as shown below:
 
-![](/images/sourcecodeconf.PNG)
+![](/bambooAutomation/images/sourcecodeconf.PNG)
 
 2) Choose the "script" task, and add a task to run maven tests. Make sure you have maven installed on your machine, and choose an interpreter that can be used on machine. In the script body add the following command:
 
@@ -77,11 +77,11 @@ For this example we will be pulling a TestNg Sample Test from QASymphony GitHub&
 
 In the script, replace the values of projectId and testcycle with the values that you acquired from qTest Manager. The values are located in the $body variable. Finally replace the url in the request with the "parseTestNGResults" Event URL, which can be found in Pulse.
 
-![](/images/bambooscript.png)
+![](/bambooAutomation/images/bambooscript.png)
 
 The tasks should be formatted as below:
 
-![](/images/bambootasks.PNG)
+![](/bambooAutomation/images/bambootasks.PNG)
 
 Note: If you run this build, the results from the TestNG tests will be parsed and uploaded to qTest Manager in the project that you specified. If testcases have not been created yet, they will be made automatically.
 
@@ -89,7 +89,7 @@ Note: If you run this build, the results from the TestNG tests will be parsed an
 
 Once Pulse, GitHub, Slack, Manager, and Bamboo are setup properly, this workflow example is ready! The first rule "TriggerBamboo" gets intiatied when there is a push event to the GitHub repository that has the Pulse webhook configured in settings. The rule "triggerBamboo" is set up to start the build if the GitHub commit message is the Bamboo Project/Plan Id. The projectID can be found in the Bamboo URL on the plan homepage as shown below.
 
-![](/images/bambooprojectid.png)
+![](/bambooAutomation/images/bambooprojectid.png)
 
 For example the commit message below will trigger the plan SP-NP when the push event occurs.
 
