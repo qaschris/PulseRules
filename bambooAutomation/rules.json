@@ -1,0 +1,154 @@
+{
+  "events": [
+    {
+      "eventName": "triggerBamboo",
+      "_id": "event-1"
+    },
+    {
+      "eventName": "SlackEvent",
+      "_id": "event-2"
+    },
+    {
+      "eventName": "parseTestNGResults",
+      "_id": "event-3"
+    },
+    {
+      "eventName": "UpdateQTestWithFormattedResultsEvent",
+      "_id": "event-4"
+    },
+    {
+      "eventName": "parseNunitResults",
+      "_id": "event-5"
+    },
+    {
+      "eventName": "parseRobotResults",
+      "_id": "event-6"
+    }
+  ],
+  "actions": [
+    {
+      "name": "triggerBamboo",
+      "description": null,
+      "pFunction": "var bambooProjectCode = body.commits[0].message;\n\n//Either place project code in constants or pass in an argument from the GitHub payload\n// var url = \"http://\" + constants.BambooURL + '/rest/api/latest/queue/' + constants.BambooProjectandPlan + '?stage&executeAllStages&customRevision&os_authType=basic';\n\nvar url = \"http://\" + constants.BambooURL + '/rest/api/latest/queue/' + bambooProjectCode + '?stage&executeAllStages&customRevision&os_authType=basic';\n\n\nvar opts = {\n    url: url,\n    insecure: true,\n    contentType: \"application/json; charset=UTF-8\",\n    auth: {\n       \"user\": constants.BambooUserName,\n       \"pass\": constants.BambooPassword\n    }\n}\n\nrequest.post(opts, function(err, res, bd) {\n        if(err) {\n            Promise.reject(err);\n            emitEvent('SlackEvent', { GitPushBambooProject: \"Git Push but commit message is not project name code\" }); \n\n\n        }\n        else {\n            emitEvent('SlackEvent', { BambooCallSuccess: \"Bamboo Build just kicked off for this plan \" + bambooProjectCode }); \n\n        }\n    // emitEvent('SlackEvent', { BambooCallSuccess: \"Bamboo Build just kicked off for this plan \" + bambooProjectCode }); \n})",
+      "_id": "action-1"
+    },
+    {
+      "name": "SlackAction",
+      "description": null,
+      "pFunction": "var str = body;\n\nvar request = require('request');\nvar slack_webhook = constants.SlackWebHook;\n\nconsole.log('About to request slack webhook: ', slack_webhook);\n\nrequest({uri: slack_webhook,\n         method: 'POST',\n         json: {\"text\": JSON.stringify(str)}\n     }, function(error, response, body) { }\n);",
+      "_id": "action-2"
+    },
+    {
+      "name": "parseTestNGResults",
+      "description": null,
+      "pFunction": "const xml2js = require(\"xml2js\");\n\nvar payload = body;\nvar testResults = payload.result;\nvar projectId = payload.projectID;\nvar cycleId = payload.testcycle;\nvar testLogs = [];\nvar timestamp = new Date();\n\nvar xmlString = decodeURI(testResults);\nxmlString = xmlString.replace(/`/g, '&');\n\nxml2js.parseString(xmlString, {\n    preserveChildrenOrder: true,\n    explicitArray: false,\n    explicitChildren: false\n}, function (err, result) {\n    if (err) {\n        emitEvent('SlackEvent', { Error: \"Unexecpted Error Parsing XML Document: \" + err }); \n    } else {\n        var testcases = Array.isArray(result.testsuite.testcase) ? result.testsuite.testcase : [result.testsuite.testcase]\n        testcases.forEach(function(obj) {\n            var name = `${obj.$.classname}#${obj.$.name}`;\n            var exe_start_date = timestamp;\n            var exe_end_date = timestamp;\n            exe_end_date.setSeconds(exe_start_date.getSeconds() + (Math.floor(obj.$.time || 0)));\n\n            var status = (undefined !== obj.skipped) ? \"SKIP\" : obj.failure ? \"FAIL\" : \"PASS\";\n            var testCase = {\n                status: status,\n                name: name,\n                attachments: [],\n                exe_start_date: exe_start_date.toISOString(),\n                exe_end_date: exe_end_date.toISOString(),\n                automation_content: name,\n                module_names: [obj.$.classname, obj.$.name],\n                test_step_logs: [{\n                    order: 0,\n                    status: status,\n                    description: obj.$.name,\n                    expected_result: obj.$.name\n                }]\n            };\n            if (obj.failure) {\n                testCase.attachments.push({\n                    name: `${obj.$.name}.txt`,\n                    data: Buffer.from(obj.failure._).toString(\"base64\"),\n                    content_type: \"text/plain\"\n                });\n            }\n            testLogs.push(testCase);\n        });\n\n    }\n});\n\nvar formattedResults = {\n    \"projectId\" : projectId,\n    \"test-cycle\" : cycleId,\n    \"logs\" : testLogs\n};\n\nemitEvent('SlackEvent', { ResultsFormatSuccess: \"Results formatted successfully for project\" }); \nemitEvent('UpdateQTestWithFormattedResultsEvent', formattedResults );\n",
+      "_id": "action-3"
+    },
+    {
+      "name": "uploadResultToQtest",
+      "description": null,
+      "pFunction": "var payload = body;\r\nvar timestamp = new Date();\r\n\r\nvar testLogs = payload.logs;\r\nvar cycleId = payload[\"test-cycle\"];\r\nvar projectId = payload.projectId;\r\n\r\n\r\nvar standardHeaders = {\r\n    'Content-Type': 'application/json',\r\n    'Authorization': constants.qTestAPIToken\r\n}\r\n\r\nvar createLogsAndTCs = function() {\r\n    var opts = {\r\n        url: \"https://\" + constants.ManagerURL + \"/api/v3/projects/\" + projectId + \"/auto-test-logs?type=automation\",\r\n        json: true,\r\n        headers: standardHeaders,\r\n        body: {\r\n            skipCreatingAutomationModule: false,\r\n            execution_date: timestamp.toISOString(),\r\n            test_cycle: cycleId,\r\n            test_logs: testLogs\r\n        }\r\n    };\r\n\r\n    request.post(opts, function(err, response, resbody) {\r\n\r\n        if(err) {\r\n            Promise.reject(err); \r\n\r\n        }\r\n        else {\r\n            emitEvent('SlackEvent', { AutomationLogUploaded: resbody });\r\n            \r\n            if(response.body.type == \"AUTOMATION_TEST_LOG\") {\r\n                Promise.resolve(\"Uploaded results successfully\");\r\n            }\r\n            else {\r\n                emitEvent('SlackEvent', { Error: \"Unable to upload results\"});\r\n                Promise.reject(\"Unable to upload test results\");\r\n            }\r\n        }\r\n    });\r\n};\r\n\r\ncreateLogsAndTCs();",
+      "_id": "action-4"
+    },
+    {
+      "name": "parseNunitResults",
+      "description": null,
+      "pFunction": "const xml2js = require(\"xml2js\");\n\nvar payload = body;\nvar testResults = payload.result;\nvar projectId = payload.projectID;\nvar cycleId = payload.testcycle;\nvar testLogs = [];\nvar timestamp = new Date();\n\nfunction findTestSuiteArray(obj) {\n  if (obj[\"test-suite\"] === undefined) {\n  \treturn obj;\n  }\n  if (Array.isArray(obj)) {\n    return obj;\n  } else {\n    return findTestSuiteArray(obj[\"test-suite\"]);\n  }\n}\n\nfunction findTestCaseTag(obj) {\n  if (obj !== undefined && obj[\"test-case\"] !== undefined) {\n    return obj[\"test-case\"];\n  } else if (obj !== undefined) {\n    return findTestCaseTag(obj[\"test-suite\"]);\n  }\n}\n\nvar xmlString = decodeURI(testResults);\nxmlString = xmlString.replace(/`/g, '&');\n\nxml2js.parseString(xmlString, {\n    preserveChildrenOrder: true,\n    explicitArray: false,\n    explicitChildren: false\n}, function (err, result) {\n    if (err) {\n        emitEvent('SlackEvent', { Error: \"Unexecpted Error Parsing XML Document: \" + err }); \n    } else {\n        var testSuites = findTestSuiteArray(result[\"test-run\"]);\n        testSuites = Array.isArray(testSuites) ? testSuites : [testSuites];\n        testSuites.forEach(function(suiteobj) {\n            var testCasesArr = findTestCaseTag(suiteobj);\n            var testcases = Array.isArray(testCasesArr) ? testCasesArr : [testCasesArr];\n            testcases.forEach(function(obj) {\n                var className = obj.$.classname;\n                var methodName = obj.$.methodname;\n                if (className === undefined || methodName === undefined) {\n                    className = obj.$.fullname\n                    methodName = obj.$.name\n                }\n                var methodStatus = obj.$.result;\n                var startTime = obj.$[\"start-time\"];\n                var endTime = obj.$[\"end-time\"];\n                if (startTime === undefined || endTime === undefined) {\n                    startTime = timestamp.toISOString();\n                    endTime = timestamp.toISOString();\n                } else {\n                    var startDate = startTime.split(\" \");\n                    var endDate = endTime.split(\" \");\n                    startTime = startDate[0] + \"T\" + startDate[1];\n                    endTime = endDate[0] + \"T\" + endDate[1];\n                }\n                var note = '';\n                var stack = '';\n                if (methodStatus == 'Failed') {\n                    methodStatus = 'FAIL';\n                } else if (methodStatus == 'Passed') {\n                    methodStatus = 'PASS';\n                } else {\n                    methodStatus = 'SKIP';\n                }\n                if (methodStatus == 'FAIL') {\n                    note = obj.failure.message;\n                    stack = obj.failure[\"stack-trace\"];\n                }\n                var testLog = {\n                    status: methodStatus,\n                    name: methodName,\n                    attachments: [],\n                    note: note,\n                    exe_start_date: startTime,\n                    exe_end_date: endTime,\n                    automation_content: className + \"#\" + methodName,\n                    module_names: [className, methodName]\n                };\n                if (stack !== undefined && stack !== '') {\n                    testLog.attachments.push({\n                        name: `${methodName}.txt`,\n                        data: Buffer.from(stack).toString(\"base64\"),\n                        content_type: \"text/plain\"\n                    });\n                }\n                testLogs.push(testLog);\n            });\n        });\n    }\n});\n\nvar formattedResults = {\n    \"projectId\" : projectId,\n    \"test-cycle\" : cycleId,\n    \"logs\" : testLogs\n};\n\nemitEvent('SlackEvent', { ResultsFormatSuccess: \"Results formatted successfully for project\" }); \nemitEvent('UpdateQTestWithFormattedResultsEvent', formattedResults );",
+      "_id": "action-5"
+    },
+    {
+      "name": "parseRobotResults",
+      "description": null,
+      "pFunction": "const xml2js = require(\"xml2js\");\n\nvar payload = body;\nvar testResults = payload.result;\nvar projectId = payload.projectID;\nvar cycleId = payload.testcycle;\nvar testLogs = [];\nvar timestamp = new Date();\n\nfunction formatDate(obj) {\n  if (obj.length < 9) {\n    return null;\n  }\n  var year = obj.substring(0,4);\n  var month = obj.substring(4,6);\n  var day = obj.substring(6,8);\n  var time = obj.substring(9, obj.length);\n  return year + \"-\" + month + \"-\" + day + \"T\" + time + \"Z\";\n}\n\nvar xmlString = decodeURI(testResults);\nxmlString = xmlString.replace(/~/g, '&');\n\nxml2js.parseString(xmlString, {\n    preserveChildrenOrder: true,\n    explicitArray: false,\n    explicitChildren: false\n}, function (err, result) {\n    if (err) {\n        emitEvent('SlackEvent', { Error: \"Unexecpted Error Parsing XML Document: \" + err }); \n    } else {\n        testSuites = Array.isArray(result.robot.suite.suite) ? result.robot.suite.suite : [result.robot.suite.suite]\n        testSuites.forEach(function(suiteobj) {\n            var testcases = Array.isArray(suiteobj.test) ? suiteobj.test : [suiteobj.test]\n            var suiteName = suiteobj.$.name;\n            testcases.forEach(function(obj) {\n                var testCaseName = obj.$.name;\n                var status = obj.status.$.status;\n                var startingTime = formatDate(obj.status.$.starttime);\n                var endingTime = formatDate(obj.status.$.endtime);\n                var note = \"\";\n                var testMethods = Array.isArray(obj.kw) ? obj.kw : [obj.kw];\n                testMethods.forEach(function(tm) {\n                    var methodName = tm.$.name\n                    var status = tm.status.$.status;\n                    var stepCount = 0;\n                    var stepLog = []\n                    if (Array.isArray(tm.kw)) {\n                        var testStepsArray  = tm.kw;\n                        testStepsArray.forEach(function(ts) {\n                            stepLog.push({\n                            order: stepCount++,\n                            status: ts.status.$.status,\n                            description: ts.$.name,\n                            expected_result: ts.doc\n                            });\n                            if (ts.msg !== undefined) {\n                            note = ts.msg._;\n                            }\n                        });\n                    }\n                    var testLog = {\n                        status: status,\n                        name: methodName,\n                        note: note,\n                        exe_start_date: startingTime,\n                        exe_end_date: endingTime,\n                        automation_content: testCaseName + \"#\" + methodName,\n                        test_step_logs: stepLog,\n                        module_names: [testCaseName, methodName]\n                    };\n                    testLogs.push(testLog);\n                });\n            });\n        });\n    }\n});\n\nvar formattedResults = {\n    \"projectId\" : projectId,\n    \"test-cycle\" : cycleId,\n    \"logs\" : testLogs\n};\n\nemitEvent('SlackEvent', { ResultsFormatSuccess: \"Results formatted successfully for project\" }); \nemitEvent('UpdateQTestWithFormattedResultsEvent', formattedResults );",
+      "_id": "action-6"
+    }
+  ],
+  "rules": [
+    {
+      "name": "TriggerBamboo",
+      "actions": [
+        "action-1"
+      ],
+      "isEnabled": true,
+      "webhook": "event-1",
+      "_id": "rule-1"
+    },
+    {
+      "name": "SlackMessagingRule",
+      "webhook": "event-2",
+      "actions": [
+        "action-2"
+      ],
+      "isEnabled": true,
+      "_id": "rule-2"
+    },
+    {
+      "name": "parseTestNG",
+      "webhook": "event-3",
+      "actions": [
+        "action-3"
+      ],
+      "isEnabled": true,
+      "_id": "rule-3"
+    },
+    {
+      "name": "Update qTest Manager",
+      "webhook": "event-4",
+      "actions": [
+        "action-4"
+      ],
+      "isEnabled": true,
+      "_id": "rule-4"
+    },
+    {
+      "name": "parseNunit",
+      "webhook": "event-5",
+      "actions": [
+        "action-5"
+      ],
+      "isEnabled": true,
+      "_id": "rule-5"
+    },
+    {
+      "name": "parseRobotResults",
+      "webhook": "event-6",
+      "actions": [
+        "action-6"
+      ],
+      "isEnabled": true,
+      "_id": "rule-6"
+    }
+  ],
+  "constants": [
+    {
+      "name": "BambooURL",
+      "value": "",
+      "_id": "constant-1"
+    },
+    {
+      "name": "BambooUserName",
+      "value": "",
+      "_id": "constant-2"
+    },
+    {
+      "name": "BambooPassword",
+      "value": "",
+      "_id": "constant-3"
+    },
+    {
+      "name": "qTestAPIToken",
+      "value": "",
+      "_id": "constant-4"
+    },
+    {
+      "name": "ManagerURL",
+      "value": "",
+      "_id": "constant-5"
+    },
+    {
+      "name": "SlackWebHook",
+      "value": "",
+      "_id": "constant-6"
+    }
+  ]
+}
