@@ -5,8 +5,8 @@ Set-Location -Path "./target"
 $payload = (Get-Content "cucumber-report.json" -Raw)
 
 $body = @{
-   'projectId' = '74528'
-   'test-cycle' = '1166189'
+   'projectId' = '$YOUR_PROJECT_ID'
+   'test-cycle' = '$YOUR_TEST_CYCLE_ID'
    'requiresDecode' = 'true'
    'result' = $payload
 }
